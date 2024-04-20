@@ -1,5 +1,5 @@
-#import sys
-#sys.path.append('C:\\Users\\Clint\\neural-networks-project-algorithmic-oracle')
+import sys
+sys.path.append('C:\\Users\\Clint\\neural-networks-project-algorithmic-oracle')
 from utils.data import *
 
 import numpy as np
@@ -43,14 +43,15 @@ class GoLeftEnv(gym.Env):
 
         # Define action and observation space
         # They must be gym.spaces objects
-        # Example when using discrete actions, we have two: left and right
+
+        # this can be described both by Discrete and Box space
         self.n_stocks = stock_df.shape[1]
         self.action_space = spaces.Box(
             low=0, high=self.grid_size, shape=(1,self.n_stocks), dtype=np.float32
         )
 
         # The observation will be the coordinate of the agent
-        # this can be described both by Discrete and Box space
+        # it's a matrix of previous returns, where the first column is our own wealth
         self.observation_space = spaces.Box(
             low=-1, high=1, shape=(window_size,self.n_stocks+1), dtype=np.float32
         )
@@ -64,7 +65,7 @@ class GoLeftEnv(gym.Env):
         # Initialize the agent at the right of the grid
         return_mat = self.stock_df.to_numpy()[:self.window_size,:];
         self.agent_pos = np.c_[np.zeros(self.window_size), return_mat]
-        self.table_ix = self.window_size+1;
+        self.table_ix = self.window_size;
 
         # here we convert to float32 to make it more general (in case we want to use continuous actions)
         return np.array(self.agent_pos).astype(np.float32), {}  # empty info dict
@@ -76,19 +77,22 @@ class GoLeftEnv(gym.Env):
         w = np.c_[np.floor(self.grid_size/2), action]
         w = w/w.sum();
 
-        X = self.stock_df.to_numpy()[self.window_size:self.window_size+n,:];
+        offset = self.table_ix + self.window_size;
+        X = self.stock_df.to_numpy()[offset:offset + n,:];
         R = np.dot(X, w[0,1:].T)
 
-        self.wealth = np.r_[self.wealth, self.wealth[-1] * np.cumprod(1 + R).squeeze()];
+        self.wealth = np.r_[self.wealth, self.wealth[-1] * np.cumprod(1 + R)];
         percent_returns = np.diff(self.wealth[-(n+1):]) / self.wealth[-n:];
 
         self.agent_pos = np.r_[self.agent_pos[n:,:], np.c_[percent_returns, X]];
-        # Are we at the left of the grid?
-        terminated = bool(self.wealth[-1] <= 0)
+            
+        # Are we out of money or time?
+        terminated = self.wealth[-1] <= 0 | self.stock_df.shape[0] <= offset+2*n
         truncated = False  # we do not limit the number of steps here
 
-        # Null reward everywhere except when reaching the goal (left of the grid)
         reward = percent_returns.prod();
+        
+        self.table_ix = self.table_ix+n;
 
         # Optionally we can pass additional info, we are not using that for now
         info = {}
@@ -156,7 +160,7 @@ model = A2C("MlpPolicy", env, verbose=1).learn(5000)
 # Test the trained agent
 # using the vecenv
 obs = vec_env.reset()
-n_steps = 20
+n_steps = 687
 for step in range(n_steps):
     action, _ = model.predict(obs, deterministic=True)
     print(f"Step {step + 1}")
