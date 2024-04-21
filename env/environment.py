@@ -1,7 +1,7 @@
-import gym
+import gymnasium as gym
+from gymnasium import spaces
 import numpy as np
 import pandas as pd
-from gym import spaces
 import yfinance as yf
 import matplotlib.pyplot as plt
 from stable_baselines3 import PPO
